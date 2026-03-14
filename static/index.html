@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Track Study — Personal study tracker with heatmap visualization" />
+  <title>Track Study</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+
+<body>
+  <!-- ─── Header ─────────────────────────────────────────────────── -->
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-icon"></span>
+        <h1>Track Study</h1>
+      </div>
+      <p class="tagline">Personal study tracker</p>
+    </div>
+    <nav class="app-tabs">
+      <button class="tab-btn active" data-target="view-tracker">Tracker</button>
+      <button class="tab-btn" data-target="view-insights">Insights</button>
+    </nav>
+  </header>
+
+  <main class="container">
+    <div class="view active" id="view-tracker">
+      <div class="two-col">
+        <!-- ─── Timer Panel ──────────────────────────────────────── -->
+        <section class="card timer-section" id="timer-section">
+          <div class="card-header">
+            <h2>Session Timer</h2>
+            <button class="btn btn-add" id="btn-open-manual-modal" style="padding: 0.2rem 0.5rem; font-size: 0.7rem;">+
+              Manual Entry</button>
+          </div>
+
+          <div class="timer-activity">
+            <label for="timer-activity-select">Activity</label>
+            <select id="timer-activity-select"></select>
+          </div>
+
+          <div class="timer-display" id="timer-display">00:00:00</div>
+          <div class="timer-controls">
+            <button class="btn btn-start" id="btn-start">Start</button>
+            <button class="btn btn-stop" id="btn-stop" disabled>Stop</button>
+            <button class="btn btn-reset" id="btn-reset" disabled>Reset</button>
+          </div>
+          <div class="timer-save" id="timer-save-group" style="display:none;">
+            <textarea id="session-notes" placeholder="Session notes (optional)…" rows="2"></textarea>
+            <button class="btn btn-save" id="btn-save">Save Session</button>
+          </div>
+        </section>
+
+        <!-- ─── Activity Manager ─────────────────────────────────── -->
+        <section class="card activities-section" id="activities-section">
+          <div class="card-header">
+            <h2>Activities</h2>
+          </div>
+          <form class="add-activity-form" id="add-activity-form">
+            <input type="text" id="new-activity-name" placeholder="New activity name…" required />
+            <button type="submit" class="btn btn-add">+ Add</button>
+          </form>
+          <ul class="activity-list" id="activity-list"></ul>
+        </section>
+      </div>
+
+      <!-- ─── Today's Logs ─────────────────────────────────────────── -->
+      <section class="card logs-section" id="logs-section">
+        <div class="card-header">
+          <h2>Today's Log</h2>
+          <span class="today-date" id="today-date"></span>
+        </div>
+        <div class="logs-empty" id="logs-empty">No sessions recorded today</div>
+        <ul class="log-list" id="log-list"></ul>
+      </section>
+    </div>
+
+    <!-- ─── Insights View ────────────────────────────────────────── -->
+    <div class="view" id="view-insights">
+      <div class="insights-top">
+        <div class="streak-card">
+          <div class="streak-label">Current Streak</div>
+          <div class="streak-value" id="val-current-streak">0</div>
+          <div class="streak-sub">days</div>
+        </div>
+        <div class="streak-card">
+          <div class="streak-label">Longest Streak</div>
+          <div class="streak-value" id="val-longest-streak">0</div>
+          <div class="streak-sub">days</div>
+        </div>
+        <div class="export-card">
+          <h3>Your Data</h3>
+          <p>Download all your logged sessions as a CSV file to keep or analyze elsewhere.</p>
+          <a href="/api/export" class="btn-export" target="_blank" id="btn-export">Export CSV</a>
+        </div>
+      </div>
+
+      <div class="charts-container">
+        <div class="card chart-card">
+          <div class="card-header">
+            <h2>7-Day Volume (Minutes)</h2>
+          </div>
+          <div class="bar-chart" id="chart-vol"></div>
+        </div>
+        <div class="card chart-card">
+          <div class="card-header">
+            <h2>Activity Distribution</h2>
+          </div>
+          <div class="dist-chart" id="chart-dist"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="app-footer">
+    <p>Track Study &mdash; Minimalist & Frictionless</p>
+  </footer>
+
+  <!-- ─── Confirmation Modal ──────────────────────────────────────── -->
+  <div class="modal-overlay" id="confirm-modal">
+    <div class="modal-content">
+      <h3 id="confirm-title">Confirm</h3>
+      <p id="confirm-message">Are you sure?</p>
+      <div class="modal-actions">
+        <button class="btn btn-cancel" id="btn-confirm-cancel">Cancel</button>
+        <button class="btn btn-danger" id="btn-confirm-ok">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Manual Entry Modal ──────────────────────────────────────── -->
+  <div class="modal-overlay" id="manual-modal">
+    <div class="modal-content">
+      <h3>Manual Log Entry</h3>
+      <form id="manual-entry-form" class="manual-form">
+        <div class="manual-input-group">
+          <input type="number" id="manual-hours" placeholder="0" min="0" max="23" style="flex:1;">
+          <label>hrs</label>
+          <input type="number" id="manual-minutes" placeholder="0" min="0" max="59" style="flex:1;">
+          <label>min</label>
+        </div>
+        <textarea id="manual-notes" placeholder="Session notes (optional)…" rows="2"></textarea>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-cancel" id="btn-manual-cancel">Cancel</button>
+          <button type="submit" class="btn btn-save" id="btn-manual-save">Save Entry</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+
+</html>

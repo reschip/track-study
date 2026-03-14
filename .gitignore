@@ -1,0 +1,19 @@
+# Entornos virtuales
+.venv/
+venv/
+ENV/
+env/
+
+# Directorios de Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Base de datos local
+trackdb.sqlite3
+*.sqlite3
+
+# Scripts de ejecución local
+start.sh

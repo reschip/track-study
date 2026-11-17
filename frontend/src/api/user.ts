@@ -1,4 +1,4 @@
-import { apiRequest, isTauri, tauriInvoke } from './client'
+import { tauriInvoke } from './client'
 import type { ThemeMode, TrackingPreferences, User, WeekStartDay } from '@/types'
 
 export interface UserUpdatePayload {
@@ -12,12 +12,6 @@ export interface UserUpdatePayload {
 }
 
 export const userApi = {
-  get: () => (isTauri() ? tauriInvoke<User>('get_user') : apiRequest<User>('/api/user')),
-  update: (payload: UserUpdatePayload) =>
-    isTauri()
-      ? tauriInvoke<User>('update_user', { payload })
-      : apiRequest<User>('/api/user', {
-          method: 'PATCH',
-          body: JSON.stringify(payload),
-        }),
+  get: () => tauriInvoke<User>('get_user'),
+  update: (payload: UserUpdatePayload) => tauriInvoke<User>('update_user', { payload }),
 }

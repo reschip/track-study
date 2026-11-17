@@ -1,4 +1,4 @@
-import { apiRequest, isTauri, tauriInvoke } from './client'
+import { tauriInvoke } from './client'
 import type { SessionList, SessionRecord, TrackingMethod } from '@/types'
 
 export interface ManualSessionPayload {
@@ -33,35 +33,10 @@ export interface SessionListParams {
 }
 
 export const sessionsApi = {
-  list: (params: SessionListParams = {}) => {
-    if (isTauri()) {
-      return tauriInvoke<SessionList>('list_sessions', { params })
-    }
-    const search = new URLSearchParams()
-    Object.entries(params).forEach(([key, val]) => {
-      if (val !== undefined && val !== '') {
-        search.set(key, String(val))
-      }
-    })
-    const qs = search.toString()
-    return apiRequest<SessionList>(`/api/sessions${qs ? `?${qs}` : ''}`)
-  },
+  list: (params: SessionListParams = {}) => tauriInvoke<SessionList>('list_sessions', { params }),
   create: (payload: ManualSessionPayload) =>
-    isTauri()
-      ? tauriInvoke<SessionRecord>('create_manual_session', { payload })
-      : apiRequest<SessionRecord>('/api/sessions', {
-          method: 'POST',
-          body: JSON.stringify(payload),
-        }),
+    tauriInvoke<SessionRecord>('create_manual_session', { payload }),
   update: (id: string, payload: SessionUpdatePayload) =>
-    isTauri()
-      ? tauriInvoke<SessionRecord>('update_session', { id, payload })
-      : apiRequest<SessionRecord>(`/api/sessions/${id}`, {
-          method: 'PATCH',
-          body: JSON.stringify(payload),
-        }),
-  remove: (id: string) =>
-    isTauri()
-      ? tauriInvoke<void>('delete_session', { id })
-      : apiRequest<void>(`/api/sessions/${id}`, { method: 'DELETE' }),
+    tauriInvoke<SessionRecord>('update_session', { id, payload }),
+  remove: (id: string) => tauriInvoke<void>('delete_session', { id }),
 }

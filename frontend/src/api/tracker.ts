@@ -1,4 +1,4 @@
-import { apiRequest, isTauri, tauriInvoke } from './client'
+import { tauriInvoke } from './client'
 import type { SessionRecord, TrackerSession } from '@/types'
 
 export interface TrackerStartPayload {
@@ -15,39 +15,14 @@ export interface TrackerUpdateMetaPayload {
 }
 
 export const trackerApi = {
-  getCurrent: () =>
-    isTauri()
-      ? tauriInvoke<{ active_session: TrackerSession | null }>('tracker_current')
-      : apiRequest<{ active_session: TrackerSession | null }>('/api/tracker/current'),
-  start: (payload: TrackerStartPayload) =>
-    isTauri()
-      ? tauriInvoke<TrackerSession>('tracker_start', { payload })
-      : apiRequest<TrackerSession>('/api/tracker/start', {
-          method: 'POST',
-          body: JSON.stringify(payload),
-        }),
-  pause: () =>
-    isTauri()
-      ? tauriInvoke<TrackerSession>('tracker_pause')
-      : apiRequest<TrackerSession>('/api/tracker/pause', { method: 'POST' }),
-  resume: () =>
-    isTauri()
-      ? tauriInvoke<TrackerSession>('tracker_resume')
-      : apiRequest<TrackerSession>('/api/tracker/resume', { method: 'POST' }),
+  getCurrent: () => tauriInvoke<{ active_session: TrackerSession | null }>('tracker_current'),
+  start: (payload: TrackerStartPayload) => tauriInvoke<TrackerSession>('tracker_start', { payload }),
+  pause: () => tauriInvoke<TrackerSession>('tracker_pause'),
+  resume: () => tauriInvoke<TrackerSession>('tracker_resume'),
   stop: (description?: string | null) =>
-    isTauri()
-      ? tauriInvoke<SessionRecord>('tracker_stop', {
-          payload: description !== undefined ? { description } : null,
-        })
-      : apiRequest<SessionRecord>('/api/tracker/stop', {
-          method: 'POST',
-          body: JSON.stringify(description !== undefined ? { description } : {}),
-        }),
+    tauriInvoke<SessionRecord>('tracker_stop', {
+      payload: description !== undefined ? { description } : null,
+    }),
   updateMeta: (payload: TrackerUpdateMetaPayload) =>
-    isTauri()
-      ? tauriInvoke<TrackerSession>('tracker_patch', { payload })
-      : apiRequest<TrackerSession>('/api/tracker/current', {
-          method: 'PATCH',
-          body: JSON.stringify(payload),
-        }),
+    tauriInvoke<TrackerSession>('tracker_patch', { payload }),
 }

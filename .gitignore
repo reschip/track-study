@@ -1,19 +1,18 @@
-# Entornos virtuales
-.venv/
-venv/
-ENV/
-env/
+# macOS
+.DS_Store
 
-# Directorios de Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.pytest_cache/
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+*.tsbuildinfo
+.env
+.env.*
 
-# Base de datos local
-trackdb.sqlite3
+# Rust / Tauri
+src-tauri/target/
+
+# Local SQLite databases
 *.sqlite3
-
-# Scripts de ejecución local
-start.sh
+*.db
+*.db-wal
+*.db-shm

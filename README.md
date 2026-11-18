@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="src-tauri/icons/128x128@2x.png" width="96" alt="Activity app icon" />
+</p>
+
 # Activity — Personal Time Intelligence
 
 > **Your time, visualized.**

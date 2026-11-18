@@ -428,3 +428,9 @@ pub struct ImportResultOut {
     pub sessions_skipped: i64,
     pub errors: Vec<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WidgetStateOut {
+    pub visible: bool,
+    pub always_on_top: bool,
+}

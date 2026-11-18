@@ -10,12 +10,16 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173,
-    host: true,
-    proxy: {
-      '/api': {
-        target: process.env.VITE_API_PROXY || 'http://localhost:8001',
-        changeOrigin: true,
+    port: 5174,
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom'],
+          charts: ['recharts'],
+          icons: ['lucide-react'],
+        },
       },
     },
   },

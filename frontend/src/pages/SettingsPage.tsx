@@ -2,6 +2,7 @@ import type { ChangeEvent, FormEvent } from 'react'
 import { useEffect, useState } from 'react'
 import { Download, Moon, Sun, Upload } from 'lucide-react'
 import { portabilityApi } from '@/api/portability'
+import { windowsApi } from '@/api/windows'
 import { PageHeader } from '@/components/layout/AppShell'
 import { Button } from '@/components/ui/Button'
 import { Field, Input, Select } from '@/components/ui/Input'
@@ -55,6 +56,17 @@ export function SettingsPage() {
 
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
+  const [exportingFormat, setExportingFormat] = useState<'csv' | 'json' | null>(null)
+  const [autostart, setAutostart] = useState(false)
+  const [autostartLoading, setAutostartLoading] = useState(true)
+
+  useEffect(() => {
+    void windowsApi
+      .getAutostartEnabled()
+      .then((enabled) => setAutostart(enabled))
+      .catch(() => {})
+      .finally(() => setAutostartLoading(false))
+  }, [])
 
   useEffect(() => {
     if (!user) return
@@ -103,6 +115,33 @@ export function SettingsPage() {
       setError(err instanceof Error ? err.message : 'Failed to save settings')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleExport = async (format: 'csv' | 'json') => {
+    setExportingFormat(format)
+    try {
+      const savedPath = await portabilityApi.exportFile(format)
+      if (savedPath) {
+        notify(`Exported ${format.toUpperCase()} to ${savedPath}`, 'success')
+      }
+    } catch (err) {
+      notify(err instanceof Error ? err.message : 'Export failed', 'error')
+    } finally {
+      setExportingFormat(null)
+    }
+  }
+
+  const handleToggleAutostart = async (next: boolean) => {
+    setAutostartLoading(true)
+    try {
+      const updated = await windowsApi.setAutostartEnabled(next)
+      setAutostart(updated)
+      notify(updated ? 'Launch at login enabled' : 'Launch at login disabled', 'success')
+    } catch (err) {
+      notify(err instanceof Error ? err.message : 'Unable to update startup setting', 'error')
+    } finally {
+      setAutostartLoading(false)
     }
   }
 
@@ -170,6 +209,16 @@ export function SettingsPage() {
               ))}
             </div>
           </div>
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-fg-muted">
+            <input
+              type="checkbox"
+              checked={autostart}
+              disabled={autostartLoading}
+              onChange={(e) => void handleToggleAutostart(e.target.checked)}
+              className="rounded border-border accent-accent"
+            />
+            Launch Activity silently in the menu bar when logging in to macOS
+          </label>
         </div>
 
         {/* Time & Tracking Preferences */}
@@ -327,20 +376,22 @@ export function SettingsPage() {
         <div className="flex flex-wrap items-center gap-2.5">
           <button
             type="button"
-            onClick={() => void portabilityApi.exportFile('csv')}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-surface px-3 text-[13px] font-medium text-fg hover:bg-surface-muted"
+            disabled={exportingFormat !== null}
+            onClick={() => void handleExport('csv')}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-surface px-3 text-[13px] font-medium text-fg hover:bg-surface-muted disabled:opacity-50"
           >
             <Download className="h-3.5 w-3.5" />
-            Export CSV
+            {exportingFormat === 'csv' ? 'Exporting…' : 'Export CSV'}
           </button>
 
           <button
             type="button"
-            onClick={() => void portabilityApi.exportFile('json')}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-surface px-3 text-[13px] font-medium text-fg hover:bg-surface-muted"
+            disabled={exportingFormat !== null}
+            onClick={() => void handleExport('json')}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-surface px-3 text-[13px] font-medium text-fg hover:bg-surface-muted disabled:opacity-50"
           >
             <Download className="h-3.5 w-3.5" />
-            Export JSON
+            {exportingFormat === 'json' ? 'Exporting…' : 'Export JSON'}
           </button>
 
           <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-surface-muted px-3 text-[13px] font-medium text-fg hover:bg-border">

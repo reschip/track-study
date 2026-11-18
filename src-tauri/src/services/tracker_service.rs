@@ -232,8 +232,8 @@ pub async fn start_timer(
     let now_utc = Utc::now();
     let existing = find_running_session_row(pool, &user.id).await?;
 
-    if let Some(ref ex) = existing {
-        if !payload.confirm_switch {
+    if let Some(ref ex) = existing
+        && !payload.confirm_switch {
             let act_name: String = ex.get("act_name");
             let status: String = ex.get("status");
             return Err(AppError::conflict(
@@ -243,7 +243,6 @@ pub async fn start_timer(
                 "active_session_exists",
             ));
         }
-    }
 
     ensure_point_not_inside_existing(pool, &user.id, now_utc, None).await?;
 

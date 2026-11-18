@@ -9,12 +9,13 @@
 ## Features
 
 - **Segment-based Timer Engine:** Each session records discrete UTC intervals (`time_segments`). Pausing closes the active segment and resuming opens a new one, so paused time is never counted.
-- **macOS Menu Bar Tray:** Control the active timer (pause, resume, stop, or reopen the window) directly from the macOS menu bar with a live 1-second clock.
+- **macOS Menu Bar Tray & Popover:** Click the menu bar icon for a Raycast-style quick control popover (live timer, Quick Start by activity/project, today's breakdown, and streak), or right-click for quick menu actions.
+- **Floating Desktop Widget:** Compact, draggable desktop widget (`Always on top` toggleable) that remembers its position and visibility across restarts.
 - **Drift-free Recovery:** Elapsed time is always derived from UTC timestamps rather than JS intervals, staying accurate across window reloads and sleep/wake cycles.
 - **Timezone & Midnight Splitting:** Sessions crossing local midnight are split cleanly across calendar days in your configured IANA timezone.
 - **Overlap Protection:** Database constraints enforce at most one active/paused session at a time, and manual entries validate against existing segments to prevent overlaps.
 - **Analytics & Contribution Matrix:** Overview dashboard, yearly contribution heatmap, daily breakdowns, period summaries, and activity comparisons.
-- **Data Portability:** Export and import your history in JSON or CSV formats.
+- **Data Portability & Startup:** Native macOS save dialog export and import for JSON/CSV, plus optional silent Launch at Login in the menu bar.
 
 ---
 
@@ -37,8 +38,10 @@ npm install
 
 ### Run in development (hot-reload)
 
+Run from the repository root:
+
 ```bash
-npm --prefix frontend run tauri dev
+./frontend/node_modules/.bin/tauri dev
 ```
 
 On first launch, Activity initializes a local SQLite database (`activity.db`) in the app data directory and seeds a starter catalog of activities and projects without sample sessions.

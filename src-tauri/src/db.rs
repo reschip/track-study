@@ -124,7 +124,8 @@ pub async fn seed_catalog_if_empty(pool: &SqlitePool) -> AppResult<()> {
     let tz: Tz = chrono_tz::America::Mexico_City;
     let today_local = Utc::now().with_timezone(&tz).date_naive();
 
-    let projects_spec: [(&str, &str, i64, Option<i64>, &str, &str, &[&str]); 4] = [
+    type SeedProjectSpec<'a> = (&'a str, &'a str, i64, Option<i64>, &'a str, &'a str, &'a [&'a str]);
+    let projects_spec: [SeedProjectSpec<'_>; 4] = [
         (
             "AI Product Discovery",
             "#1F6FEB",

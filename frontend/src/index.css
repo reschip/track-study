@@ -56,6 +56,12 @@ body,
   height: 100%;
 }
 
+html.transparent-window,
+html.transparent-window body {
+  background: transparent !important;
+  overflow: hidden;
+}
+
 body {
   margin: 0;
   background-color: var(--bg);

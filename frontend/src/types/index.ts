@@ -296,3 +296,8 @@ export interface ImportResult {
   sessions_skipped: number
   errors: string[]
 }
+
+export interface WidgetState {
+  visible: boolean
+  always_on_top: boolean
+}

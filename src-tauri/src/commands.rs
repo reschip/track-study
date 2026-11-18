@@ -7,6 +7,7 @@ use crate::models::{
     OverviewOut, ProjectCreate, ProjectOut, ProjectStatsOut, ProjectUpdate, SessionListOut,
     SessionListParams, SessionOut, SessionUpdate, TrackerCurrentOut, TrackerPatchRequest,
     TrackerSessionOut, TrackerStartRequest, TrackerStopRequest, UserOut, UserUpdate,
+    WidgetStateOut,
 };
 use crate::services::{
     activity_service, analytics_service, portability_service, project_service, session_service,
@@ -24,8 +25,14 @@ pub async fn get_user(state: State<'_, AppState>) -> AppResult<UserOut> {
 }
 
 #[tauri::command]
-pub async fn update_user(state: State<'_, AppState>, payload: UserUpdate) -> AppResult<UserOut> {
-    user_service::update_user(&state.pool, payload).await
+pub async fn update_user(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    payload: UserUpdate,
+) -> AppResult<UserOut> {
+    let res = user_service::update_user(&state.pool, payload).await?;
+    let _ = app.emit("workspace-changed", ());
+    Ok(res)
 }
 
 // ---------------------------------------------------------------------------
@@ -50,11 +57,14 @@ pub async fn list_activities(
 
 #[tauri::command]
 pub async fn create_activity(
+    app: AppHandle,
     state: State<'_, AppState>,
     payload: ActivityCreate,
 ) -> AppResult<ActivityOut> {
     let user = user_service::get_default_user(&state.pool).await?;
-    activity_service::create_activity(&state.pool, &user, payload).await
+    let res = activity_service::create_activity(&state.pool, &user, payload).await?;
+    let _ = app.emit("workspace-changed", ());
+    Ok(res)
 }
 
 #[tauri::command]
@@ -69,36 +79,51 @@ pub async fn get_activity_stats(
 
 #[tauri::command]
 pub async fn update_activity(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: String,
     payload: ActivityUpdate,
 ) -> AppResult<ActivityOut> {
     let user = user_service::get_default_user(&state.pool).await?;
-    activity_service::update_activity(&state.pool, &user, &id, payload).await
+    let res = activity_service::update_activity(&state.pool, &user, &id, payload).await?;
+    let _ = app.emit("workspace-changed", ());
+    Ok(res)
 }
 
 #[tauri::command]
 pub async fn archive_activity(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: String,
 ) -> AppResult<ActivityOut> {
     let user = user_service::get_default_user(&state.pool).await?;
-    activity_service::archive_activity(&state.pool, &user, &id, true).await
+    let res = activity_service::archive_activity(&state.pool, &user, &id, true).await?;
+    let _ = app.emit("workspace-changed", ());
+    Ok(res)
 }
 
 #[tauri::command]
 pub async fn restore_activity(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: String,
 ) -> AppResult<ActivityOut> {
     let user = user_service::get_default_user(&state.pool).await?;
-    activity_service::archive_activity(&state.pool, &user, &id, false).await
+    let res = activity_service::archive_activity(&state.pool, &user, &id, false).await?;
+    let _ = app.emit("workspace-changed", ());
+    Ok(res)
 }
 
 #[tauri::command]
-pub async fn delete_activity(state: State<'_, AppState>, id: String) -> AppResult<()> {
+pub async fn delete_activity(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> AppResult<()> {
     let user = user_service::get_default_user(&state.pool).await?;
-    activity_service::delete_activity(&state.pool, &user, &id).await
+    activity_service::delete_activity(&state.pool, &user, &id).await?;
+    let _ = app.emit("workspace-changed", ());
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -116,11 +141,14 @@ pub async fn list_projects(
 
 #[tauri::command]
 pub async fn create_project(
+    app: AppHandle,
     state: State<'_, AppState>,
     payload: ProjectCreate,
 ) -> AppResult<ProjectOut> {
     let user = user_service::get_default_user(&state.pool).await?;
-    project_service::create_project(&state.pool, &user, payload).await
+    let res = project_service::create_project(&state.pool, &user, payload).await?;
+    let _ = app.emit("workspace-changed", ());
+    Ok(res)
 }
 
 #[tauri::command]
@@ -135,18 +163,27 @@ pub async fn get_project_stats(
 
 #[tauri::command]
 pub async fn update_project(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: String,
     payload: ProjectUpdate,
 ) -> AppResult<ProjectOut> {
     let user = user_service::get_default_user(&state.pool).await?;
-    project_service::update_project(&state.pool, &user, &id, payload).await
+    let res = project_service::update_project(&state.pool, &user, &id, payload).await?;
+    let _ = app.emit("workspace-changed", ());
+    Ok(res)
 }
 
 #[tauri::command]
-pub async fn delete_project(state: State<'_, AppState>, id: String) -> AppResult<()> {
+pub async fn delete_project(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> AppResult<()> {
     let user = user_service::get_default_user(&state.pool).await?;
-    project_service::delete_project(&state.pool, &user, &id).await
+    project_service::delete_project(&state.pool, &user, &id).await?;
+    let _ = app.emit("workspace-changed", ());
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -237,27 +274,39 @@ pub async fn list_sessions(
 
 #[tauri::command]
 pub async fn create_manual_session(
+    app: AppHandle,
     state: State<'_, AppState>,
     payload: ManualSessionCreate,
 ) -> AppResult<SessionOut> {
     let user = user_service::get_default_user(&state.pool).await?;
-    session_service::create_manual_session(&state.pool, &user, payload).await
+    let res = session_service::create_manual_session(&state.pool, &user, payload).await?;
+    let _ = app.emit("workspace-changed", ());
+    Ok(res)
 }
 
 #[tauri::command]
 pub async fn update_session(
+    app: AppHandle,
     state: State<'_, AppState>,
     id: String,
     payload: SessionUpdate,
 ) -> AppResult<SessionOut> {
     let user = user_service::get_default_user(&state.pool).await?;
-    session_service::update_session(&state.pool, &user, &id, payload).await
+    let res = session_service::update_session(&state.pool, &user, &id, payload).await?;
+    let _ = app.emit("workspace-changed", ());
+    Ok(res)
 }
 
 #[tauri::command]
-pub async fn delete_session(state: State<'_, AppState>, id: String) -> AppResult<()> {
+pub async fn delete_session(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> AppResult<()> {
     let user = user_service::get_default_user(&state.pool).await?;
-    session_service::delete_session(&state.pool, &user, &id).await
+    session_service::delete_session(&state.pool, &user, &id).await?;
+    let _ = app.emit("workspace-changed", ());
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -363,11 +412,112 @@ pub async fn export_data(state: State<'_, AppState>, format: String) -> AppResul
 }
 
 #[tauri::command]
+pub async fn export_data_to_file(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    format: String,
+) -> AppResult<Option<String>> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let user = user_service::get_default_user(&state.pool).await?;
+    let is_csv = format.eq_ignore_ascii_case("csv");
+    let content = if is_csv {
+        portability_service::build_export_csv(&state.pool, &user).await?
+    } else {
+        portability_service::build_export_json(&state.pool, &user).await?
+    };
+
+    let ext = if is_csv { "csv" } else { "json" };
+    let default_name = format!("activity-export.{ext}");
+    let filter_name = if is_csv { "CSV" } else { "JSON" };
+
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title("Export Activity Data")
+        .set_file_name(&default_name)
+        .add_filter(filter_name, &[ext])
+        .save_file(move |file_path| {
+            let _ = tx.send(file_path);
+        });
+
+    let Some(file_path) = rx.await.ok().flatten() else {
+        return Ok(None);
+    };
+    let path = file_path
+        .into_path()
+        .map_err(|e| crate::error::AppError::internal(format!("Invalid export path: {e}")))?;
+    std::fs::write(&path, content)
+        .map_err(|e| crate::error::AppError::internal(format!("Failed to write export file: {e}")))?;
+    Ok(Some(path.to_string_lossy().to_string()))
+}
+
+#[tauri::command]
 pub async fn import_data(
+    app: AppHandle,
     state: State<'_, AppState>,
     filename: String,
     content: String,
 ) -> AppResult<ImportResultOut> {
     let user = user_service::get_default_user(&state.pool).await?;
-    portability_service::import_content(&state.pool, &user, &filename, &content).await
+    let res = portability_service::import_content(&state.pool, &user, &filename, &content).await?;
+    let _ = app.emit("workspace-changed", ());
+    Ok(res)
+}
+
+// ---------------------------------------------------------------------------
+// Auxiliary Windows (Popover & Desktop Widget)
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn open_main_window(app: AppHandle) {
+    crate::windows::open_main(&app);
+}
+
+#[tauri::command]
+pub fn hide_popover_window(app: AppHandle) {
+    crate::windows::hide_popover(&app);
+}
+
+#[tauri::command]
+pub fn toggle_widget_window(app: AppHandle) -> WidgetStateOut {
+    crate::windows::toggle_widget(&app)
+}
+
+#[tauri::command]
+pub fn set_widget_visible(app: AppHandle, visible: bool) -> WidgetStateOut {
+    crate::windows::set_widget_visible(&app, visible)
+}
+
+#[tauri::command]
+pub fn get_widget_state(app: AppHandle) -> WidgetStateOut {
+    crate::windows::get_widget_state(&app)
+}
+
+#[tauri::command]
+pub fn set_widget_always_on_top(app: AppHandle, always_on_top: bool) -> WidgetStateOut {
+    crate::windows::set_widget_always_on_top(&app, always_on_top)
+}
+
+#[tauri::command]
+pub fn get_autostart_enabled(app: AppHandle) -> AppResult<bool> {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch()
+        .is_enabled()
+        .map_err(|e| crate::error::AppError::internal(format!("Failed to read autostart state: {e}")))
+}
+
+#[tauri::command]
+pub fn set_autostart_enabled(app: AppHandle, enabled: bool) -> AppResult<bool> {
+    use tauri_plugin_autostart::ManagerExt;
+    let mgr = app.autolaunch();
+    if enabled {
+        mgr.enable()
+            .map_err(|e| crate::error::AppError::internal(format!("Failed to enable autostart: {e}")))?;
+    } else {
+        mgr.disable()
+            .map_err(|e| crate::error::AppError::internal(format!("Failed to disable autostart: {e}")))?;
+    }
+    mgr.is_enabled()
+        .map_err(|e| crate::error::AppError::internal(format!("Failed to read autostart state: {e}")))
 }

@@ -14,11 +14,11 @@ activity_tracker/
 ├── README.md
 ├── frontend/
 │   └── src/
-│       ├── api/          # Clientes invoke/fetch (activities, analytics, portability, projects, sessions, tracker, user)
-│       ├── components/   # charts/, layout/, sessions/, tracker/, ui/
-│       ├── pages/        # Overview, Tracker, Activities, Projects, Calendar, Analytics, History, Settings
+│       ├── api/          # Clientes invoke (activities, analytics, portability, projects, sessions, tracker, user, windows)
+│       ├── components/   # charts/, layout/, sessions/, tracker/, ui/, widgets/
+│       ├── pages/        # Overview, Activities, Projects, Analytics, History, Settings
 │       ├── services/     # timer, streak, timeFormat (+ tests Vitest)
-│       ├── state/        # AppContext.tsx (estado global + listener "timer-changed")
+│       ├── state/        # AppContext.tsx (estado global + listeners "timer-changed", "workspace-changed", "widget-state-changed")
 │       └── types/        # index.ts (contratos TS)
 └── src-tauri/
     ├── Cargo.toml
@@ -27,20 +27,22 @@ activity_tracker/
     ├── migrations/
     │   └── 0001_init.sql
     └── src/
-        ├── lib.rs        # Setup SQLite, AppState, tray y handlers
-        ├── commands.rs   # 34 comandos #[tauri::command]
+        ├── lib.rs        # Setup SQLite, AppState, plugins, ventanas auxiliares, tray y handlers
+        ├── commands.rs   # 40 comandos #[tauri::command]
         ├── db.rs         # Pool SQLite y seed limpio
         ├── models.rs     # DTOs Rust
         ├── error.rs      # AppError
         ├── time_utils.rs # Timezones y split por medianoche
         ├── tray.rs       # Menú bar tray de macOS
+        ├── windows.rs    # Popover del tray y Desktop Widget flotante persistente
         └── services/     # activity, analytics, portability, project, session, tracker, user
 ```
 
 ## Mapa de archivos clave
 - `src-tauri/tauri.conf.json`: configuración Tauri (`devUrl: http://localhost:5174`, bundle `com.activity.tracker`).
-- `src-tauri/src/lib.rs`: inicialización de SQLite, `AppState`, tray y registro de comandos.
-- `src-tauri/src/commands.rs`: los 34 comandos Tauri expuestos al frontend.
+- `src-tauri/src/lib.rs`: inicialización de SQLite, `AppState`, plugins (`dialog`, `autostart`), ventanas auxiliares, tray y registro de comandos.
+- `src-tauri/src/commands.rs`: los 40 comandos Tauri expuestos al frontend.
+- `src-tauri/src/windows.rs`: gestión del Menu Bar Popover (`popover`) y Desktop Widget (`widget`, posición/visibilidad/pin persistidos en `widget_state.json`).
 - `src-tauri/src/db.rs`: pool SQLite, migraciones y seed inicial limpio (1 usuario, 12 actividades, 4 proyectos, 0 sesiones).
 - `src-tauri/src/models.rs` y `src-tauri/src/error.rs`: DTOs y `AppError` (`{ message, code, status }`).
 - `src-tauri/src/time_utils.rs`: manejo de zonas horarias y división de intervalos por medianoche local.
@@ -60,9 +62,9 @@ activity_tracker/
   ```bash
   cd src-tauri && cargo test && cargo clippy
   ```
-- **Desarrollo nativo (hot-reload en :5174)**:
+- **Desarrollo nativo (hot-reload en :5174, ejecutar desde la raíz)**:
   ```bash
-  npm --prefix frontend run tauri dev
+  ./frontend/node_modules/.bin/tauri dev
   ```
 - **Build `.app` de macOS**:
   ```bash

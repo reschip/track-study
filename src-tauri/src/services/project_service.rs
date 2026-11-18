@@ -516,7 +516,7 @@ pub async fn get_project_stats(
     }
 
     let mut act_entries: Vec<(String, i64)> = act_secs.into_iter().collect();
-    act_entries.sort_by(|a, b| b.1.cmp(&a.1));
+    act_entries.sort_by_key(|a| std::cmp::Reverse(a.1));
 
     let activity_distribution = act_entries
         .into_iter()

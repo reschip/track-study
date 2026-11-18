@@ -5,6 +5,7 @@ pub mod models;
 pub mod services;
 pub mod time_utils;
 pub mod tray;
+pub mod windows;
 
 use sqlx::SqlitePool;
 use tauri::{Manager, WindowEvent};
@@ -16,6 +17,11 @@ pub struct AppState {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--autostart"]),
+        ))
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -39,7 +45,15 @@ pub fn run() {
             .expect("failed to initialize SQLite database");
 
             app.manage(AppState { pool });
+            windows::init_auxiliary_windows(app)?;
             tray::init_tray(app)?;
+            tray::refresh_widget_menu_label(app.handle());
+
+            if std::env::args().any(|arg| arg == "--autostart")
+                && let Some(win) = app.get_webview_window(windows::MAIN_WINDOW_LABEL)
+            {
+                let _ = win.hide();
+            }
 
             Ok(())
         })
@@ -80,7 +94,16 @@ pub fn run() {
             commands::analytics_summary,
             commands::analytics_compare,
             commands::export_data,
+            commands::export_data_to_file,
             commands::import_data,
+            commands::open_main_window,
+            commands::hide_popover_window,
+            commands::toggle_widget_window,
+            commands::set_widget_visible,
+            commands::get_widget_state,
+            commands::set_widget_always_on_top,
+            commands::get_autostart_enabled,
+            commands::set_autostart_enabled,
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");

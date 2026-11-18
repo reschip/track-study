@@ -308,24 +308,21 @@ pub async fn list_sessions(
     }
     let mut binds: Vec<BindVal> = vec![BindVal::Str(user.id.clone())];
 
-    if let Some(ref aid) = params.activity_id {
-        if !aid.is_empty() {
+    if let Some(ref aid) = params.activity_id
+        && !aid.is_empty() {
             sql.push_str(" AND s.activity_id = ?");
             binds.push(BindVal::Str(aid.clone()));
         }
-    }
-    if let Some(ref pid) = params.project_id {
-        if !pid.is_empty() {
+    if let Some(ref pid) = params.project_id
+        && !pid.is_empty() {
             sql.push_str(" AND s.project_id = ?");
             binds.push(BindVal::Str(pid.clone()));
         }
-    }
-    if let Some(ref method) = params.tracking_method {
-        if method == "timer" || method == "manual" {
+    if let Some(ref method) = params.tracking_method
+        && (method == "timer" || method == "manual") {
             sql.push_str(" AND s.tracking_method = ?");
             binds.push(BindVal::Str(method.clone()));
         }
-    }
 
     if params.start_date.is_some() || params.end_date.is_some() {
         let s_str = params
@@ -448,14 +445,13 @@ pub async fn update_session(
         let (new_end, new_dur) = if let Some(ref e) = payload.ended_at {
             let ed = parse_utc(e)?;
             let diff = ((ed - new_start).num_milliseconds() as f64 / 1000.0).round() as i64;
-            if let Some(dur) = payload.duration_seconds {
-                if (diff - dur).abs() > 60 {
+            if let Some(dur) = payload.duration_seconds
+                && (diff - dur).abs() > 60 {
                     return Err(AppError::unprocessable(
                         "ended_at and duration_seconds are inconsistent",
                         "inconsistent_times",
                     ));
                 }
-            }
             (ed, diff)
         } else if let Some(dur) = payload.duration_seconds {
             (new_start + Duration::seconds(dur), dur)

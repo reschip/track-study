@@ -3,7 +3,7 @@ use std::time::Duration;
 use chrono::Utc;
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
-    tray::TrayIconBuilder,
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager, Runtime,
 };
 
@@ -14,6 +14,7 @@ use crate::AppState;
 const TRAY_ID: &str = "main-tray";
 
 struct TrayMenuState<R: Runtime> {
+    widget_item: MenuItem<R>,
     toggle_item: MenuItem<R>,
     stop_item: MenuItem<R>,
 }
@@ -32,37 +33,63 @@ fn format_mm_ss(total_secs: i64) -> String {
 
 pub fn init_tray<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
     let open_item = MenuItem::with_id(app, "open", "Open Activity", true, None::<&str>)?;
+    let widget_item =
+        MenuItem::with_id(app, "widget", "Show Desktop Widget", true, None::<&str>)?;
+    let sep_top = PredefinedMenuItem::separator(app)?;
     let toggle_item = MenuItem::with_id(app, "toggle", "No Active Timer", false, None::<&str>)?;
     let stop_item = MenuItem::with_id(app, "stop", "Stop Timer", false, None::<&str>)?;
     let sep = PredefinedMenuItem::separator(app)?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit Activity", true, None::<&str>)?;
 
-    let menu = Menu::with_items(app, &[&open_item, &toggle_item, &stop_item, &sep, &quit_item])?;
+    let menu = Menu::with_items(
+        app,
+        &[
+            &open_item,
+            &widget_item,
+            &sep_top,
+            &toggle_item,
+            &stop_item,
+            &sep,
+            &quit_item,
+        ],
+    )?;
 
     app.manage(TrayMenuState {
+        widget_item: widget_item.clone(),
         toggle_item: toggle_item.clone(),
         stop_item: stop_item.clone(),
     });
 
     let mut builder = TrayIconBuilder::with_id(TRAY_ID)
         .menu(&menu)
-        .show_menu_on_left_click(true)
-        .tooltip("Activity")
+        .show_menu_on_left_click(false)
+        .tooltip("Activity — Click to open quick control, right-click for menu")
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                rect,
+                ..
+            } = event
+            {
+                crate::windows::toggle_popover_at(tray.app_handle(), Some(rect));
+            }
+        })
         .on_menu_event(|app, event| match event.id.as_ref() {
             "open" => {
-                if let Some(win) = app.get_webview_window("main") {
-                    let _ = win.show();
-                    let _ = win.set_focus();
-                }
+                crate::windows::open_main(app);
+            }
+            "widget" => {
+                crate::windows::toggle_widget(app);
             }
             "toggle" => {
                 let handle = app.clone();
                 tauri::async_runtime::spawn(async move {
                     let state = handle.state::<AppState>();
-                    if let Ok(user) = user_service::get_default_user(&state.pool).await {
-                        if let Ok(curr) = tracker_service::get_current_timer(&state.pool, &user).await {
-                            if let Some(sess) = curr.active_session {
-                                if sess.status == "running" {
+                    if let Ok(user) = user_service::get_default_user(&state.pool).await
+                        && let Ok(curr) = tracker_service::get_current_timer(&state.pool, &user).await
+                            && let Some(sess) = curr.active_session {
+                                if sess.status == "active" {
                                     let _ = tracker_service::pause_timer(&state.pool, &user).await;
                                 } else {
                                     let _ = tracker_service::resume_timer(&state.pool, &user).await;
@@ -70,8 +97,6 @@ pub fn init_tray<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
                                 let _ = handle.emit("timer-changed", ());
                                 update_tray_now(&handle).await;
                             }
-                        }
-                    }
                 });
             }
             "stop" => {
@@ -117,6 +142,17 @@ pub fn refresh_tray<R: Runtime>(app: &AppHandle<R>) {
     });
 }
 
+pub fn refresh_widget_menu_label<R: Runtime>(app: &AppHandle<R>) {
+    let state = crate::windows::get_widget_state(app);
+    let menu_state = app.state::<TrayMenuState<R>>();
+    let label = if state.visible {
+        "Hide Desktop Widget"
+    } else {
+        "Show Desktop Widget"
+    };
+    let _ = menu_state.widget_item.set_text(label);
+}
+
 async fn update_tray_now<R: Runtime>(app: &AppHandle<R>) {
     let Some(tray) = app.tray_by_id(TRAY_ID) else {
         return;
@@ -134,20 +170,18 @@ async fn update_tray_now<R: Runtime>(app: &AppHandle<R>) {
     match curr.active_session {
         Some(sess) => {
             let mut total = sess.accumulated_seconds;
-            if sess.status == "running" {
-                if let Some(seg_start_str) = sess.current_segment_started_at.as_deref() {
-                    if let Ok(seg_start) = parse_utc(seg_start_str) {
+            if sess.status == "active"
+                && let Some(seg_start_str) = sess.current_segment_started_at.as_deref()
+                    && let Ok(seg_start) = parse_utc(seg_start_str) {
                         let delta = (Utc::now() - seg_start).num_seconds().max(0);
                         total += delta;
                     }
-                }
-            }
             let clock = format_mm_ss(total);
-            let prefix = if sess.status == "running" { "●" } else { "⏸" };
+            let prefix = if sess.status == "active" { "●" } else { "⏸" };
             let title = format!(" {prefix} {} · {clock}", sess.activity.name);
             let _ = tray.set_title(Some(&title));
 
-            let toggle_label = if sess.status == "running" {
+            let toggle_label = if sess.status == "active" {
                 format!("Pause {}", sess.activity.name)
             } else {
                 format!("Resume {}", sess.activity.name)

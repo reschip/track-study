@@ -6,8 +6,9 @@ import { activitiesApi } from '@/api/activities'
 import { projectsApi } from '@/api/projects'
 import { trackerApi, type TrackerStartPayload, type TrackerUpdateMetaPayload } from '@/api/tracker'
 import { userApi, type UserUpdatePayload } from '@/api/user'
+import { windowsApi } from '@/api/windows'
 import { computeClockOffsetMs, computeElapsedSeconds, formatTimerClock } from '@/services/timer'
-import type { Activity, NavSection, Project, ThemeMode, TrackerSession, User } from '@/types'
+import type { Activity, NavSection, Project, ThemeMode, TrackerSession, User, WidgetState } from '@/types'
 
 export interface ToastItem {
   id: string
@@ -53,11 +54,21 @@ interface AppContextValue {
   toasts: ToastItem[]
   notify: (message: string, tone?: ToastItem['tone']) => void
   dismissToast: (id: string) => void
+  widgetState: WidgetState
+  toggleWidget: () => Promise<void>
+  setWidgetAlwaysOnTop: (alwaysOnTop: boolean) => Promise<void>
 }
 
 const AppContext = createContext<AppContextValue | null>(null)
 
+function isAuxWindowView(): boolean {
+  if (typeof window === 'undefined') return false
+  const view = new URLSearchParams(window.location.search).get('view')
+  return view === 'popover' || view === 'widget'
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
+  const isAuxView = isAuxWindowView()
   const [user, setUser] = useState<User | null>(null)
   const [loadingBoot, setLoadingBoot] = useState(true)
   const [theme, setThemeState] = useState<ThemeMode>(() => {
@@ -90,6 +101,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   })
   const [dataVersion, setDataVersion] = useState(0)
   const [toasts, setToasts] = useState<ToastItem[]>([])
+  const [widgetState, setWidgetState] = useState<WidgetState>({
+    visible: false,
+    always_on_top: true,
+  })
   const toastCounter = useRef(0)
 
   const dismissToast = useCallback((id: string) => {
@@ -115,15 +130,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('activity_theme', theme)
   }, [theme])
 
-  // Sync hash navigation cleanly
+  // Sync hash navigation cleanly (only for main workspace window)
   useEffect(() => {
+    if (isAuxView) return
     const nextHash = `#/${activeNav}`
     if (window.location.hash !== nextHash) {
       window.location.hash = nextHash
     }
-  }, [activeNav])
+  }, [activeNav, isAuxView])
 
   useEffect(() => {
+    if (isAuxView) return
     const onHash = () => {
       const hash = window.location.hash.replace('#/', '') as NavSection
       const valid: NavSection[] = [
@@ -142,7 +159,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
-  }, [])
+  }, [isAuxView])
 
   const applyTimerSnapshot = useCallback((session: TrackerSession | null) => {
     const receivedAt = Date.now()
@@ -172,17 +189,50 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!isTauri()) return
-    let unlisten: (() => void) | undefined
-    void listen('timer-changed', () => {
-      void syncCurrentTimer()
-      setDataVersion((v) => v + 1)
-    }).then((fn) => {
-      unlisten = fn
-    })
-    return () => {
-      if (unlisten) unlisten()
+    const unlisteners: (() => void)[] = []
+    let disposed = false
+
+    const setup = async () => {
+      const u1 = await listen('timer-changed', () => {
+        void syncCurrentTimer()
+        setDataVersion((v) => v + 1)
+      })
+      const u2 = await listen('workspace-changed', () => {
+        void userApi.get().then((u) => {
+          setUser(u)
+          setThemeState(u.theme)
+        })
+        void reloadCatalogs()
+        setDataVersion((v) => v + 1)
+      })
+      const u3 = await listen<WidgetState>('widget-state-changed', (event) => {
+        if (event.payload) {
+          setWidgetState(event.payload)
+        }
+      })
+
+      if (disposed) {
+        u1()
+        u2()
+        u3()
+      } else {
+        unlisteners.push(u1, u2, u3)
+      }
     }
-  }, [syncCurrentTimer])
+
+    void setup()
+    void windowsApi
+      .getWidgetState()
+      .then((ws) => {
+        if (!disposed) setWidgetState(ws)
+      })
+      .catch(() => {})
+
+    return () => {
+      disposed = true
+      unlisteners.forEach((fn) => fn())
+    }
+  }, [reloadCatalogs, syncCurrentTimer])
 
   useEffect(() => {
     let cancelled = false
@@ -230,10 +280,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!activeSession || activeSession.status !== 'active') {
       const sec = computeElapsedSeconds(activeSession, Date.now(), clockOffsetMs)
       setElapsedSeconds(sec)
-      if (!activeSession) {
-        document.title = 'Activity — Your time, visualized.'
-      } else {
-        document.title = `[Paused ${formatTimerClock(sec)}] ${activeSession.activity.name} — Activity`
+      if (!isAuxView) {
+        if (!activeSession) {
+          document.title = 'Activity — Your time, visualized.'
+        } else {
+          document.title = `[Paused ${formatTimerClock(sec)}] ${activeSession.activity.name} — Activity`
+        }
       }
       return
     }
@@ -241,13 +293,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const updateTick = () => {
       const sec = computeElapsedSeconds(activeSession, Date.now(), clockOffsetMs)
       setElapsedSeconds(sec)
-      document.title = `[${formatTimerClock(sec)}] ${activeSession.activity.name} — Activity`
+      if (!isAuxView) {
+        document.title = `[${formatTimerClock(sec)}] ${activeSession.activity.name} — Activity`
+      }
     }
 
     updateTick()
     const interval = window.setInterval(updateTick, 500)
     return () => window.clearInterval(interval)
-  }, [activeSession, clockOffsetMs])
+  }, [activeSession, clockOffsetMs, isAuxView])
 
   const updateUser = useCallback(
     async (payload: UserUpdatePayload) => {
@@ -399,6 +453,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Global Keyboard Shortcuts (Space, ⌘., N, 1..5, G-chords, ?)
   useEffect(() => {
+    if (isAuxView) return
     let lastGTime = 0
 
     const isTypingTarget = (target: EventTarget | null): boolean => {
@@ -526,7 +581,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [])
+  }, [isAuxView])
+
+  const toggleWidget = useCallback(async () => {
+    try {
+      const next = await windowsApi.toggleWidget()
+      setWidgetState(next)
+    } catch (err) {
+      notify(err instanceof Error ? err.message : 'Unable to toggle widget', 'error')
+    }
+  }, [notify])
+
+  const setWidgetAlwaysOnTop = useCallback(
+    async (alwaysOnTop: boolean) => {
+      try {
+        const next = await windowsApi.setWidgetAlwaysOnTop(alwaysOnTop)
+        setWidgetState(next)
+      } catch (err) {
+        notify(err instanceof Error ? err.message : 'Unable to update widget pin state', 'error')
+      }
+    },
+    [notify],
+  )
 
   const value = useMemo<AppContextValue>(
     () => ({
@@ -562,6 +638,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       toasts,
       notify,
       dismissToast,
+      widgetState,
+      toggleWidget,
+      setWidgetAlwaysOnTop,
     }),
     [
       user,
@@ -592,6 +671,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       toasts,
       notify,
       dismissToast,
+      widgetState,
+      toggleWidget,
+      setWidgetAlwaysOnTop,
     ],
   )
 

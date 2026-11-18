@@ -61,11 +61,10 @@ async fn fetch_completed_slices(
     activity_ids: Option<&[String]>,
     project_id: Option<&str>,
 ) -> AppResult<Vec<SegmentSlice>> {
-    if let Some(ids) = activity_ids {
-        if ids.is_empty() {
+    if let Some(ids) = activity_ids
+        && ids.is_empty() {
             return Ok(Vec::new());
         }
-    }
 
     let (range_start_utc, range_end_utc) =
         local_range_bounds_utc(start_day, end_day, &user.timezone)?;
@@ -243,7 +242,7 @@ fn build_project_distribution(slices: &[SegmentSlice]) -> Vec<DistributionItem> 
 
     let grand_total: i64 = totals.values().sum();
     let mut entries: Vec<(Option<String>, i64)> = totals.into_iter().collect();
-    entries.sort_by(|a, b| b.1.cmp(&a.1));
+    entries.sort_by_key(|a| std::cmp::Reverse(a.1));
 
     entries
         .into_iter()
@@ -669,7 +668,7 @@ pub async fn get_analytics_summary(
             .filter(|&(_, &s)| s > 0)
             .map(|(h, &s)| (h, s))
             .collect();
-        by_hour.sort_by(|a, b| b.1.cmp(&a.1));
+        by_hour.sort_by_key(|a| std::cmp::Reverse(a.1));
         by_hour.into_iter().take(3).map(|(h, _)| h).collect()
     } else {
         Vec::new()
@@ -685,7 +684,7 @@ pub async fn get_analytics_summary(
             .iter()
             .filter(|w| w.total_seconds > 0)
             .collect();
-        sorted_wd.sort_by(|a, b| b.total_seconds.cmp(&a.total_seconds));
+        sorted_wd.sort_by_key(|a| std::cmp::Reverse(a.total_seconds));
         sorted_wd
             .into_iter()
             .take(2)

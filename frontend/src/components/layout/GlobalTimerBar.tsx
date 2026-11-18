@@ -1,4 +1,5 @@
-import { Calendar, ChevronDown, Keyboard, Moon, Plus, Search, Sun } from 'lucide-react'
+import { Calendar, ChevronDown, Keyboard, Moon, PictureInPicture2, Plus, Search, Sun } from 'lucide-react'
+import { cn } from '@/components/ui/cn'
 import { formatReadableDate, todayDateStringInZone } from '@/services/timeFormat'
 import { formatTimerClock } from '@/services/timer'
 import { useApp } from '@/state/AppContext'
@@ -14,6 +15,8 @@ export function GlobalTimerBar() {
     theme,
     setTheme,
     setActiveNav,
+    widgetState,
+    toggleWidget,
   } = useApp()
 
   const tz = user?.timezone ?? 'UTC'
@@ -94,6 +97,20 @@ export function GlobalTimerBar() {
               aria-label="Open command palette"
             >
               <Search className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => void toggleWidget()}
+              className={cn(
+                'inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors',
+                widgetState.visible
+                  ? 'bg-accent-subtle text-accent'
+                  : 'text-fg-subtle hover:bg-surface-muted/70 hover:text-fg',
+              )}
+              title={widgetState.visible ? 'Hide desktop widget' : 'Show desktop widget'}
+              aria-label="Toggle desktop widget"
+            >
+              <PictureInPicture2 className="h-3.5 w-3.5" />
             </button>
             <button
               type="button"

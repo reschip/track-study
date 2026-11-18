@@ -116,9 +116,8 @@ pub fn init_tray<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
             _ => {}
         });
 
-    if let Some(icon) = app.default_window_icon().cloned() {
-        builder = builder.icon(icon);
-    }
+    let tray_icon = tauri::include_image!("icons/tray-icon.png");
+    builder = builder.icon(tray_icon).icon_as_template(true);
 
     builder.build(app)?;
 

@@ -58,7 +58,9 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
+            if window.label() == windows::MAIN_WINDOW_LABEL
+                && let WindowEvent::CloseRequested { api, .. } = event
+            {
                 api.prevent_close();
                 let _ = window.hide();
             }
@@ -105,6 +107,12 @@ pub fn run() {
             commands::get_autostart_enabled,
             commands::set_autostart_enabled,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while building tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = event {
+                windows::open_main(app_handle);
+            }
+        });
 }

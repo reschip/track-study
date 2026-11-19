@@ -1,6 +1,7 @@
+use std::sync::Mutex;
 use std::time::Duration;
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -13,10 +14,19 @@ use crate::AppState;
 
 const TRAY_ID: &str = "main-tray";
 
+#[derive(Clone)]
+struct CachedTrayTimer {
+    activity_name: String,
+    is_active: bool,
+    accumulated_seconds: i64,
+    segment_started_at: Option<DateTime<Utc>>,
+}
+
 struct TrayMenuState<R: Runtime> {
     widget_item: MenuItem<R>,
     toggle_item: MenuItem<R>,
     stop_item: MenuItem<R>,
+    cached_timer: Mutex<Option<CachedTrayTimer>>,
 }
 
 fn format_mm_ss(total_secs: i64) -> String {
@@ -58,6 +68,7 @@ pub fn init_tray<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
         widget_item: widget_item.clone(),
         toggle_item: toggle_item.clone(),
         stop_item: stop_item.clone(),
+        cached_timer: Mutex::new(None),
     });
 
     let mut builder = TrayIconBuilder::with_id(TRAY_ID)
@@ -121,13 +132,14 @@ pub fn init_tray<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
 
     builder.build(app)?;
 
-    // Start 1-second background ticker to keep macOS menu bar timer live
+    // Start 1-second background ticker using cached timer state (zero SQLite polling)
     let handle = app.handle().clone();
     tauri::async_runtime::spawn(async move {
+        update_tray_now(&handle).await;
         let mut interval = tokio::time::interval(Duration::from_secs(1));
         loop {
             interval.tick().await;
-            update_tray_now(&handle).await;
+            tick_tray_clock(&handle);
         }
     });
 
@@ -152,6 +164,34 @@ pub fn refresh_widget_menu_label<R: Runtime>(app: &AppHandle<R>) {
     let _ = menu_state.widget_item.set_text(label);
 }
 
+fn tick_tray_clock<R: Runtime>(app: &AppHandle<R>) {
+    let menu_state = app.state::<TrayMenuState<R>>();
+    let snapshot = menu_state
+        .cached_timer
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone());
+
+    let Some(timer) = snapshot else {
+        return;
+    };
+    if !timer.is_active {
+        return;
+    }
+
+    let Some(tray) = app.tray_by_id(TRAY_ID) else {
+        return;
+    };
+
+    let mut total = timer.accumulated_seconds;
+    if let Some(seg_start) = timer.segment_started_at {
+        total += (Utc::now() - seg_start).num_seconds().max(0);
+    }
+    let clock = format_mm_ss(total);
+    let title = format!(" ● {} · {clock}", timer.activity_name);
+    let _ = tray.set_title(Some(&title));
+}
+
 async fn update_tray_now<R: Runtime>(app: &AppHandle<R>) {
     let Some(tray) = app.tray_by_id(TRAY_ID) else {
         return;
@@ -168,19 +208,35 @@ async fn update_tray_now<R: Runtime>(app: &AppHandle<R>) {
 
     match curr.active_session {
         Some(sess) => {
+            let is_active = sess.status == "active";
+            let segment_started_at = if is_active {
+                sess.current_segment_started_at
+                    .as_deref()
+                    .and_then(|s| parse_utc(s).ok())
+            } else {
+                None
+            };
+
             let mut total = sess.accumulated_seconds;
-            if sess.status == "active"
-                && let Some(seg_start_str) = sess.current_segment_started_at.as_deref()
-                    && let Ok(seg_start) = parse_utc(seg_start_str) {
-                        let delta = (Utc::now() - seg_start).num_seconds().max(0);
-                        total += delta;
-                    }
+            if let Some(seg_start) = segment_started_at {
+                total += (Utc::now() - seg_start).num_seconds().max(0);
+            }
+
+            if let Ok(mut guard) = menu_state.cached_timer.lock() {
+                *guard = Some(CachedTrayTimer {
+                    activity_name: sess.activity.name.clone(),
+                    is_active,
+                    accumulated_seconds: sess.accumulated_seconds,
+                    segment_started_at,
+                });
+            }
+
             let clock = format_mm_ss(total);
-            let prefix = if sess.status == "active" { "●" } else { "⏸" };
+            let prefix = if is_active { "●" } else { "⏸" };
             let title = format!(" {prefix} {} · {clock}", sess.activity.name);
             let _ = tray.set_title(Some(&title));
 
-            let toggle_label = if sess.status == "active" {
+            let toggle_label = if is_active {
                 format!("Pause {}", sess.activity.name)
             } else {
                 format!("Resume {}", sess.activity.name)
@@ -190,6 +246,9 @@ async fn update_tray_now<R: Runtime>(app: &AppHandle<R>) {
             let _ = menu_state.stop_item.set_enabled(true);
         }
         None => {
+            if let Ok(mut guard) = menu_state.cached_timer.lock() {
+                *guard = None;
+            }
             let _ = tray.set_title(None::<&str>);
             let _ = menu_state.toggle_item.set_text("No Active Timer");
             let _ = menu_state.toggle_item.set_enabled(false);

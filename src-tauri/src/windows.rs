@@ -159,7 +159,13 @@ fn popover_just_hidden() -> bool {
     false
 }
 
-pub fn init_auxiliary_windows<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
+fn ensure_popover_window<R: Runtime>(
+    app: &AppHandle<R>,
+) -> tauri::Result<tauri::WebviewWindow<R>> {
+    if let Some(win) = app.get_webview_window(POPOVER_WINDOW_LABEL) {
+        return Ok(win);
+    }
+
     let popover = WebviewWindowBuilder::new(
         app,
         POPOVER_WINDOW_LABEL,
@@ -192,7 +198,20 @@ pub fn init_auxiliary_windows<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<
         _ => {}
     });
 
-    let persisted = load_persisted_widget_state(app.handle());
+    Ok(popover)
+}
+
+fn ensure_widget_window<R: Runtime>(
+    app: &AppHandle<R>,
+) -> tauri::Result<tauri::WebviewWindow<R>> {
+    if let Some(win) = app.get_webview_window(WIDGET_WINDOW_LABEL) {
+        return Ok(win);
+    }
+
+    let persisted = widget_persist_lock()
+        .lock()
+        .map(|g| g.0.clone())
+        .unwrap_or_default();
 
     let widget = WebviewWindowBuilder::new(
         app,
@@ -223,10 +242,6 @@ pub fn init_auxiliary_windows<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<
         let _ = widget.set_position(LogicalPosition::new(x, y));
     }
 
-    if persisted.visible {
-        let _ = widget.show();
-    }
-
     let widget_handle = widget.clone();
     widget.on_window_event(move |event| match event {
         WindowEvent::Moved(pos) => {
@@ -247,6 +262,15 @@ pub fn init_auxiliary_windows<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<
         _ => {}
     });
 
+    Ok(widget)
+}
+
+pub fn init_auxiliary_windows<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
+    let persisted = load_persisted_widget_state(app.handle());
+    if persisted.visible {
+        let widget = ensure_widget_window(app.handle())?;
+        let _ = widget.show();
+    }
     Ok(())
 }
 
@@ -269,11 +293,9 @@ pub fn hide_popover<R: Runtime>(app: &AppHandle<R>) {
 }
 
 pub fn toggle_popover_at<R: Runtime>(app: &AppHandle<R>, tray_rect: Option<Rect>) {
-    let Some(win) = app.get_webview_window(POPOVER_WINDOW_LABEL) else {
-        return;
-    };
-
-    if win.is_visible().unwrap_or(false) {
+    if let Some(win) = app.get_webview_window(POPOVER_WINDOW_LABEL)
+        && win.is_visible().unwrap_or(false)
+    {
         mark_popover_hidden_now();
         let _ = win.hide();
         return;
@@ -283,6 +305,10 @@ pub fn toggle_popover_at<R: Runtime>(app: &AppHandle<R>, tray_rect: Option<Rect>
     if popover_just_hidden() {
         return;
     }
+
+    let Ok(win) = ensure_popover_window(app) else {
+        return;
+    };
 
     if let Some(rect) = tray_rect {
         let scale = win.scale_factor().unwrap_or(1.0);
@@ -333,21 +359,25 @@ pub fn get_widget_state<R: Runtime>(app: &AppHandle<R>) -> WidgetStateOut {
             always_on_top: win.is_always_on_top().unwrap_or(true),
         }
     } else {
+        let always_on_top = widget_persist_lock()
+            .lock()
+            .map(|g| g.0.always_on_top)
+            .unwrap_or(true);
         WidgetStateOut {
             visible: false,
-            always_on_top: true,
+            always_on_top,
         }
     }
 }
 
 pub fn set_widget_visible<R: Runtime>(app: &AppHandle<R>, visible: bool) -> WidgetStateOut {
-    if let Some(win) = app.get_webview_window(WIDGET_WINDOW_LABEL) {
-        if visible {
+    if visible {
+        if let Ok(win) = ensure_widget_window(app) {
             let _ = win.show();
             let _ = win.set_focus();
-        } else {
-            let _ = win.hide();
         }
+    } else if let Some(win) = app.get_webview_window(WIDGET_WINDOW_LABEL) {
+        let _ = win.hide();
     }
     persist_widget_immediate(|s| s.visible = visible);
     emit_widget_state(app);

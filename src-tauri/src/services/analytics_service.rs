@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use chrono::{DateTime, Datelike, Duration, NaiveDate, TimeZone, Timelike, Utc};
 use sqlx::{Row, SqlitePool};
@@ -31,7 +32,7 @@ struct SliceSessionMeta {
 
 #[derive(Debug, Clone)]
 struct SegmentSlice {
-    session: SliceSessionMeta,
+    session: Arc<SliceSessionMeta>,
     local_date: NaiveDate,
     start_utc: DateTime<Utc>,
     end_utc: DateTime<Utc>,
@@ -141,7 +142,7 @@ async fn fetch_completed_slices(
             continue;
         }
 
-        let meta = SliceSessionMeta {
+        let meta = Arc::new(SliceSessionMeta {
             session_id: row.get("sess_id"),
             activity: ActivityBrief {
                 id: row.get("act_id"),
@@ -163,7 +164,7 @@ async fn fetch_completed_slices(
             session_duration_seconds: row.get("sess_duration_seconds"),
             description: row.get("sess_description"),
             tracking_method: row.get("sess_tracking_method"),
-        };
+        });
 
         for day_sl in split_interval_by_local_day(clamped_start, clamped_end, &user.timezone)? {
             if day_sl.local_date >= start_day && day_sl.local_date <= end_day && day_sl.seconds > 0

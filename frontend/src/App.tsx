@@ -1,10 +1,19 @@
-import { useEffect } from 'react'
-import { AppShell } from '@/components/layout/AppShell'
+import { Suspense, lazy, useEffect } from 'react'
 import { Skeleton } from '@/components/ui/Misc'
-import { DesktopWidget } from '@/components/widgets/DesktopWidget'
-import { MenuBarPopover } from '@/components/widgets/MenuBarPopover'
-import { OverviewPage } from '@/pages/OverviewPage'
 import { AppProvider, useApp } from '@/state/AppContext'
+
+const AppShell = lazy(() =>
+  import('@/components/layout/AppShell').then((m) => ({ default: m.AppShell })),
+)
+const OverviewPage = lazy(() =>
+  import('@/pages/OverviewPage').then((m) => ({ default: m.OverviewPage })),
+)
+const DesktopWidget = lazy(() =>
+  import('@/components/widgets/DesktopWidget').then((m) => ({ default: m.DesktopWidget })),
+)
+const MenuBarPopover = lazy(() =>
+  import('@/components/widgets/MenuBarPopover').then((m) => ({ default: m.MenuBarPopover })),
+)
 
 type ViewMode = 'main' | 'popover' | 'widget'
 
@@ -33,7 +42,11 @@ function ActiveView() {
     )
   }
 
-  return <OverviewPage />
+  return (
+    <Suspense fallback={null}>
+      <OverviewPage />
+    </Suspense>
+  )
 }
 
 export default function App() {
@@ -50,7 +63,9 @@ export default function App() {
   if (viewMode === 'popover') {
     return (
       <AppProvider>
-        <MenuBarPopover />
+        <Suspense fallback={null}>
+          <MenuBarPopover />
+        </Suspense>
       </AppProvider>
     )
   }
@@ -58,16 +73,20 @@ export default function App() {
   if (viewMode === 'widget') {
     return (
       <AppProvider>
-        <DesktopWidget />
+        <Suspense fallback={null}>
+          <DesktopWidget />
+        </Suspense>
       </AppProvider>
     )
   }
 
   return (
     <AppProvider>
-      <AppShell>
-        <ActiveView />
-      </AppShell>
+      <Suspense fallback={null}>
+        <AppShell>
+          <ActiveView />
+        </AppShell>
+      </Suspense>
     </AppProvider>
   )
 }

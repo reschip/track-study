@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { analyticsApi } from '@/api/analytics'
 import { computeStreakStats } from '@/services/streak'
 import { todayDateStringInZone } from '@/services/timeFormat'
@@ -13,6 +13,7 @@ export function useCompactFocusSummary() {
 
   const [overview, setOverview] = useState<OverviewData | null>(null)
   const [currentStreak, setCurrentStreak] = useState(0)
+  const pendingRefreshRef = useRef(false)
 
   const refresh = useCallback(async () => {
     try {
@@ -29,8 +30,24 @@ export function useCompactFocusSummary() {
   }, [currentYear, todayStr])
 
   useEffect(() => {
+    if (document.visibilityState === 'hidden') {
+      pendingRefreshRef.current = true
+      return
+    }
+    pendingRefreshRef.current = false
     void refresh()
   }, [refresh, dataVersion])
+
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible' && pendingRefreshRef.current) {
+        pendingRefreshRef.current = false
+        void refresh()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [refresh])
 
   const quickActivities = useMemo<Activity[]>(() => {
     const active = activities.filter((a) => !a.is_archived)

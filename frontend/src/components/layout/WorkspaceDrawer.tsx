@@ -1,13 +1,24 @@
-import { useEffect } from 'react'
+import { Suspense, lazy, useEffect } from 'react'
 import { BarChart3, FolderCog, History, X } from 'lucide-react'
 import { cn } from '@/components/ui/cn'
-import { ActivitiesPage } from '@/pages/ActivitiesPage'
-import { AnalyticsPage } from '@/pages/AnalyticsPage'
-import { HistoryPage } from '@/pages/HistoryPage'
-import { ProjectsPage } from '@/pages/ProjectsPage'
-import { SettingsPage } from '@/pages/SettingsPage'
 import { useApp } from '@/state/AppContext'
 import type { NavSection } from '@/types'
+
+const ActivitiesPage = lazy(() =>
+  import('@/pages/ActivitiesPage').then((m) => ({ default: m.ActivitiesPage })),
+)
+const AnalyticsPage = lazy(() =>
+  import('@/pages/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage })),
+)
+const HistoryPage = lazy(() =>
+  import('@/pages/HistoryPage').then((m) => ({ default: m.HistoryPage })),
+)
+const ProjectsPage = lazy(() =>
+  import('@/pages/ProjectsPage').then((m) => ({ default: m.ProjectsPage })),
+)
+const SettingsPage = lazy(() =>
+  import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
+)
 
 type DrawerKind = 'history' | 'analytics' | 'manage'
 
@@ -129,11 +140,13 @@ export function WorkspaceDrawer() {
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
-          {activeNav === 'history' && <HistoryPage />}
-          {activeNav === 'analytics' && <AnalyticsPage />}
-          {activeNav === 'activities' && <ActivitiesPage />}
-          {activeNav === 'projects' && <ProjectsPage />}
-          {activeNav === 'settings' && <SettingsPage />}
+          <Suspense fallback={<div className="py-8 text-center text-xs text-fg-muted">Loading…</div>}>
+            {activeNav === 'history' && <HistoryPage />}
+            {activeNav === 'analytics' && <AnalyticsPage />}
+            {activeNav === 'activities' && <ActivitiesPage />}
+            {activeNav === 'projects' && <ProjectsPage />}
+            {activeNav === 'settings' && <SettingsPage />}
+          </Suspense>
         </div>
       </aside>
     </div>

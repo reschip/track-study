@@ -62,35 +62,42 @@ pub async fn ensure_no_overlap(
     reference_now: Option<DateTime<Utc>>,
 ) -> AppResult<()> {
     let now_utc = reference_now.unwrap_or_else(Utc::now);
+    let cand_start_str = format_utc(candidate_start);
+    let cand_end_str = format_utc(candidate_end);
+    let now_str = format_utc(now_utc);
 
     let mut sql = String::from(
-        "SELECT seg.started_at, seg.ended_at
+        "SELECT 1
          FROM time_segments seg
          JOIN time_sessions s ON s.id = seg.session_id
-         WHERE s.user_id = ?",
+         WHERE s.user_id = ?
+           AND seg.started_at < ?
+           AND CASE
+                 WHEN seg.ended_at IS NOT NULL THEN seg.ended_at
+                 WHEN seg.started_at > ? THEN seg.started_at
+                 ELSE ?
+               END > ?",
     );
     if exclude_session_id.is_some() {
         sql.push_str(" AND s.id != ?");
     }
+    sql.push_str(" LIMIT 1");
 
-    let mut q = sqlx::query(&sql).bind(user_id);
+    let mut q = sqlx::query_scalar::<_, i64>(&sql)
+        .bind(user_id)
+        .bind(&cand_end_str)
+        .bind(&now_str)
+        .bind(&now_str)
+        .bind(&cand_start_str);
     if let Some(excl) = exclude_session_id {
         q = q.bind(excl);
     }
 
-    let rows = q.fetch_all(pool).await?;
-    for r in rows {
-        let seg_start = parse_utc(&r.get::<String, _>("started_at"))?;
-        let seg_end = match r.get::<Option<String>, _>("ended_at") {
-            Some(s) => parse_utc(&s)?,
-            None => seg_start.max(now_utc),
-        };
-        if seg_start < candidate_end && seg_end > candidate_start {
-            return Err(AppError::conflict(
-                "This time range overlaps with an existing session.",
-                "session_overlap",
-            ));
-        }
+    if q.fetch_optional(pool).await?.is_some() {
+        return Err(AppError::conflict(
+            "This time range overlaps with an existing session.",
+            "session_overlap",
+        ));
     }
 
     Ok(())
@@ -291,38 +298,33 @@ pub async fn list_sessions(
     user: &UserOut,
     params: SessionListParams,
 ) -> AppResult<SessionListOut> {
-    let mut sql = String::from(
-        "SELECT s.id, s.activity_id, s.project_id, s.started_at, s.ended_at,
-                s.duration_seconds, s.description, s.tracking_method, s.status,
-                s.created_at, s.updated_at,
-                a.name AS act_name, a.color AS act_color, a.category AS act_category, a.is_archived AS act_archived,
-                p.name AS proj_name, p.color AS proj_color, p.status AS proj_status
-         FROM time_sessions s
+    let mut where_sql = String::from(
+        "FROM time_sessions s
          JOIN activities a ON a.id = s.activity_id
          LEFT JOIN projects p ON p.id = s.project_id
          WHERE s.user_id = ? AND s.status = 'completed'",
     );
 
-    enum BindVal {
-        Str(String),
-    }
-    let mut binds: Vec<BindVal> = vec![BindVal::Str(user.id.clone())];
+    let mut binds: Vec<String> = vec![user.id.clone()];
 
     if let Some(ref aid) = params.activity_id
-        && !aid.is_empty() {
-            sql.push_str(" AND s.activity_id = ?");
-            binds.push(BindVal::Str(aid.clone()));
-        }
+        && !aid.is_empty()
+    {
+        where_sql.push_str(" AND s.activity_id = ?");
+        binds.push(aid.clone());
+    }
     if let Some(ref pid) = params.project_id
-        && !pid.is_empty() {
-            sql.push_str(" AND s.project_id = ?");
-            binds.push(BindVal::Str(pid.clone()));
-        }
+        && !pid.is_empty()
+    {
+        where_sql.push_str(" AND s.project_id = ?");
+        binds.push(pid.clone());
+    }
     if let Some(ref method) = params.tracking_method
-        && (method == "timer" || method == "manual") {
-            sql.push_str(" AND s.tracking_method = ?");
-            binds.push(BindVal::Str(method.clone()));
-        }
+        && (method == "timer" || method == "manual")
+    {
+        where_sql.push_str(" AND s.tracking_method = ?");
+        binds.push(method.clone());
+    }
 
     if params.start_date.is_some() || params.end_date.is_some() {
         let s_str = params
@@ -340,9 +342,9 @@ pub async fn list_sessions(
             let sd = parse_date(ss)?;
             let ed = parse_date(es)?;
             let (range_start_utc, range_end_utc) = local_range_bounds_utc(sd, ed, &user.timezone)?;
-            sql.push_str(" AND s.started_at < ? AND (s.ended_at IS NULL OR s.ended_at > ?)");
-            binds.push(BindVal::Str(format_utc(range_end_utc)));
-            binds.push(BindVal::Str(format_utc(range_start_utc)));
+            where_sql.push_str(" AND s.started_at < ? AND (s.ended_at IS NULL OR s.ended_at > ?)");
+            binds.push(format_utc(range_end_utc));
+            binds.push(format_utc(range_start_utc));
         }
     }
 
@@ -350,35 +352,53 @@ pub async fn list_sessions(
         let trimmed = search.trim();
         if !trimmed.is_empty() {
             let pattern = format!("%{}%", trimmed.to_lowercase());
-            sql.push_str(
+            where_sql.push_str(
                 " AND (lower(COALESCE(s.description, '')) LIKE ? OR lower(a.name) LIKE ? OR lower(COALESCE(p.name, '')) LIKE ?)",
             );
-            binds.push(BindVal::Str(pattern.clone()));
-            binds.push(BindVal::Str(pattern.clone()));
-            binds.push(BindVal::Str(pattern));
+            binds.push(pattern.clone());
+            binds.push(pattern.clone());
+            binds.push(pattern);
         }
     }
 
-    if params.sort.as_deref() == Some("asc") {
-        sql.push_str(" ORDER BY s.started_at ASC");
+    let count_sql = format!(
+        "SELECT COUNT(*) AS cnt, COALESCE(SUM(s.duration_seconds), 0) AS total_secs {where_sql}"
+    );
+    let mut count_q = sqlx::query(&count_sql);
+    for v in &binds {
+        count_q = count_q.bind(v);
+    }
+    let agg_row = count_q.fetch_one(pool).await?;
+    let total: i64 = agg_row.get("cnt");
+    let total_seconds: i64 = agg_row.get("total_secs");
+
+    let order_clause = if params.sort.as_deref() == Some("asc") {
+        "ORDER BY s.started_at ASC"
     } else {
-        sql.push_str(" ORDER BY s.started_at DESC");
+        "ORDER BY s.started_at DESC"
+    };
+
+    let offset = params.offset.unwrap_or(0).max(0);
+    let limit = params.limit.unwrap_or(200).clamp(1, 500);
+
+    let data_sql = format!(
+        "SELECT s.id, s.activity_id, s.project_id, s.started_at, s.ended_at,
+                s.duration_seconds, s.description, s.tracking_method, s.status,
+                s.created_at, s.updated_at,
+                a.name AS act_name, a.color AS act_color, a.category AS act_category, a.is_archived AS act_archived,
+                p.name AS proj_name, p.color AS proj_color, p.status AS proj_status
+         {where_sql}
+         {order_clause}
+         LIMIT ? OFFSET ?"
+    );
+
+    let mut data_q = sqlx::query(&data_sql);
+    for v in &binds {
+        data_q = data_q.bind(v);
     }
+    data_q = data_q.bind(limit).bind(offset);
 
-    let mut q = sqlx::query(&sql);
-    for b in &binds {
-        match b {
-            BindVal::Str(v) => q = q.bind(v),
-        }
-    }
-
-    let all_rows = q.fetch_all(pool).await?;
-    let total = all_rows.len() as i64;
-    let total_seconds: i64 = all_rows.iter().map(|r| r.get::<i64, _>("duration_seconds")).sum();
-
-    let offset = params.offset.unwrap_or(0).max(0) as usize;
-    let limit = params.limit.unwrap_or(200).clamp(1, 500) as usize;
-    let paged_rows: Vec<_> = all_rows.into_iter().skip(offset).take(limit).collect();
+    let paged_rows = data_q.fetch_all(pool).await?;
 
     let sids: Vec<String> = paged_rows.iter().map(|r| r.get("id")).collect();
     let mut segs_map = load_segments_map(pool, &sids).await?;

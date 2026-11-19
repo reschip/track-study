@@ -19,14 +19,20 @@ pub async fn init_pool_from_url(database_url: &str) -> AppResult<SqlitePool> {
         .create_if_missing(true)
         .foreign_keys(true)
         .journal_mode(SqliteJournalMode::Wal)
-        .synchronous(SqliteSynchronous::Normal);
+        .synchronous(SqliteSynchronous::Normal)
+        .pragma("temp_store", "MEMORY")
+        .pragma("cache_size", "-2000")
+        .pragma("journal_size_limit", "1048576")
+        .pragma("auto_vacuum", "INCREMENTAL");
 
     let pool = SqlitePoolOptions::new()
-        .max_connections(5)
+        .max_connections(2)
         .connect_with(opts)
         .await?;
 
     sqlx::migrate!("./migrations").run(&pool).await?;
+    let _ = sqlx::query("PRAGMA incremental_vacuum;").execute(&pool).await;
+    let _ = sqlx::query("PRAGMA optimize;").execute(&pool).await;
     Ok(pool)
 }
 
